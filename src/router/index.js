@@ -35,6 +35,11 @@ const router = createRouter({
           component: () => import("../views/Tenants.vue")
         },
         {
+          path: 'tenant-users',
+          name: 'TenantUsers',
+          component: () => import("../views/TenantUsers.vue")
+        },
+        {
           path: 'data',
           name: 'Data',
           component: () => import("../views/Data.vue")

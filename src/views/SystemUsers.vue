@@ -1,7 +1,7 @@
 <template>
   <n-space vertical>
     <n-h1>系统用户管理</n-h1>
-    <n-card>
+    <n-card title="系统用户">
       <template #header-extra>
         <n-button type="primary" @click="showModal = true">新增用户</n-button>
       </template>

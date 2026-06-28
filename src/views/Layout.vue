@@ -48,6 +48,7 @@ const menuOptions = [
   { label: '首页', key: 'Home', path: '/' },
   { label: '系统用户', key: 'SystemUsers', path: '/system-users' },
   { label: '租户管理', key: 'Tenants', path: '/tenants' },
+  { label: '租户用户', key: 'TenantUsers', path: '/tenant-users' },
   { label: '数据管理', key: 'Data', path: '/data' },
 ]
 
