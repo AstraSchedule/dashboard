@@ -130,14 +130,8 @@ async function handleCreate() {
     return false
   }
   creating.value = true
-  try {
-    pendingAction = {type: 'create', subdomain}
-    passwordConfirmModal.value?.open(`确认创建租户 ${subdomain}？将创建 DNS 记录。`)
-  } catch (e) {
-    message.error(e?.response?.data?.error || '创建租户失败')
-  } finally {
-    creating.value = false
-  }
+  pendingAction = {type: 'create', subdomain}
+  passwordConfirmModal.value?.open(`确认创建租户 ${subdomain}？将创建 DNS 记录。`)
   return true
 }
 

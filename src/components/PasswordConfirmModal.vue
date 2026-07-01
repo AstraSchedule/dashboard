@@ -2,7 +2,7 @@
   <n-modal v-model:show="visible" preset="dialog" title="身份验证" positive-text="确认" negative-text="取消" :loading="loading" @positive-click="handleConfirm" @after-leave="reset">
     <n-space vertical style="margin-top: 16px;">
       <n-alert type="warning" title="敏感操作">
-        {{ hint || '此操作需要验证密码才能执行。' }}
+        {{ currentHint || '此操作需要验证密码才能执行。' }}
       </n-alert>
       <n-form-item label="当前密码">
         <n-input v-model:value="password" type="password" show-password-on="click" placeholder="请输入密码" @keyup.enter="handleConfirm" />
@@ -28,8 +28,10 @@ const message = useMessage()
 const visible = ref(false)
 const loading = ref(false)
 const password = ref('')
+const currentHint = ref('')
 
-function open() {
+function open(hint) {
+  currentHint.value = hint || props.hint || ''
   visible.value = true
 }
 
