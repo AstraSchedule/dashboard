@@ -51,6 +51,12 @@ const statusMap = {
   abnormal: {label: '异常租户', type: 'error'},
 }
 
+function getAuthHeaders(pwd) {
+  const h = {Authorization: `Bearer ${getToken()}`}
+  if (pwd) h['X-Verify-Password'] = pwd
+  return h
+}
+
 const columns = [
   {title: '子域名', key: 'subdomain', render(row) {
     return h(NText, {strong: true}, {default: () => row.subdomain || '-'})
@@ -65,7 +71,6 @@ const columns = [
     const btns = []
 
     if (row.status === 'normal' && row.record_id) {
-      // 正常租户：可封禁、可删除
       btns.push(h(NPopconfirm, {
         onPositiveClick: () => { pendingAction = {type: 'ban', ...row}; passwordConfirmModal.value?.open(`确认封禁 ${row.subdomain}？将删除 DNS 记录但保留数据库数据。`) },
       }, {
@@ -81,7 +86,6 @@ const columns = [
     }
 
     if (row.status === 'orphan' && row.record_id) {
-      // 孤儿租户：可删除 DNS 记录
       btns.push(h(NPopconfirm, {
         onPositiveClick: () => { pendingAction = {type: 'delete-dns', ...row}; passwordConfirmModal.value?.open(`确认删除 ${row.subdomain} 的 DNS 记录？`) },
       }, {
@@ -91,7 +95,6 @@ const columns = [
     }
 
     if (row.status === 'abnormal') {
-      // 异常租户：可清理残留数据
       btns.push(h(NPopconfirm, {
         onPositiveClick: () => { pendingAction = {type: 'cleanup', ...row}; passwordConfirmModal.value?.open(`确认清理 ${row.namespace} 的残留数据？`) },
       }, {
@@ -107,7 +110,7 @@ const columns = [
 async function fetchTenants() {
   loading.value = true
   try {
-    const resp = await axios.get(`${getAPISRV()}/web/tenants`, {headers: {Authorization: `Bearer ${getToken()}`}})
+    const resp = await axios.get(`${getAPISRV()}/web/tenants`, {headers: getAuthHeaders()})
     tenants.value = resp.data.data || []
   } catch (e) {
     message.error(e?.response?.data?.detail || '获取租户列表失败')
@@ -128,11 +131,8 @@ async function handleCreate() {
   }
   creating.value = true
   try {
-    await axios.post(`${getAPISRV()}/web/tenants`, {subdomain}, {headers: {Authorization: `Bearer ${getToken()}`}})
-    message.success(`租户 ${subdomain} 创建成功`)
-    showCreateModal.value = false
-    createForm.value.subdomain = ''
-    fetchTenants()
+    pendingAction = {type: 'create', subdomain}
+    passwordConfirmModal.value?.open(`确认创建租户 ${subdomain}？将创建 DNS 记录。`)
   } catch (e) {
     message.error(e?.response?.data?.error || '创建租户失败')
   } finally {
@@ -141,23 +141,27 @@ async function handleCreate() {
   return true
 }
 
-async function onPasswordConfirmed() {
+async function onPasswordConfirmed(pwd) {
   if (!pendingAction) return
-  const {type, record_id, namespace} = pendingAction
-  const headers = {Authorization: `Bearer ${getToken()}`}
+  const {type, record_id, namespace, subdomain} = pendingAction
 
   try {
-    if (type === 'delete') {
-      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
+    if (type === 'create') {
+      await axios.post(`${getAPISRV()}/web/tenants`, {subdomain}, {headers: getAuthHeaders(pwd)})
+      message.success(`租户 ${subdomain} 创建成功`)
+      showCreateModal.value = false
+      createForm.value.subdomain = ''
+    } else if (type === 'delete') {
+      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers: getAuthHeaders(pwd), data: {namespace}})
       message.success('租户已删除（DNS + 数据库）')
     } else if (type === 'ban') {
-      await axios.post(`${getAPISRV()}/web/tenants/${record_id}/ban`, null, {headers})
+      await axios.post(`${getAPISRV()}/web/tenants/${record_id}/ban`, null, {headers: getAuthHeaders(pwd)})
       message.success('租户已封禁（仅 DNS）')
     } else if (type === 'delete-dns') {
-      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
+      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers: getAuthHeaders(pwd), data: {namespace}})
       message.success('DNS 记录已删除')
     } else if (type === 'cleanup') {
-      await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers})
+      await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers: getAuthHeaders(pwd)})
       message.success('残留数据已清理')
     }
     fetchTenants()
