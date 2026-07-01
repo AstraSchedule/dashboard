@@ -41,7 +41,7 @@ const creating = ref(false)
 const showCreateModal = ref(false)
 const createForm = ref({subdomain: ''})
 const passwordConfirmModal = ref(null)
-let pendingDeleteId = null
+let pendingAction = null
 
 const domain = 'getastra.cn'
 
@@ -61,14 +61,46 @@ const columns = [
     const s = statusMap[row.status] || {label: row.status, type: 'default'}
     return h(NTag, {type: s.type, size: 'small'}, {default: () => s.label})
   }},
-  {title: '操作', key: 'actions', width: 80, render(row) {
-    if (row.status === 'abnormal' || !row.record_id) return null
-    return h(NPopconfirm, {
-      onPositiveClick: () => { pendingDeleteId = row.record_id; passwordConfirmModal.value?.open(`确认删除租户 ${row.subdomain}？此操作将删除 DNS 记录。`) },
-    }, {
-      trigger: () => h(NButton, {size: 'small', type: 'error', secondary: true}, {default: () => '删除'}),
-      default: () => `确认删除 ${row.subdomain}？`,
-    })
+  {title: '操作', key: 'actions', width: 180, render(row) {
+    const btns = []
+
+    if (row.status === 'normal' && row.record_id) {
+      // 正常租户：可封禁、可删除
+      btns.push(h(NPopconfirm, {
+        onPositiveClick: () => { pendingAction = {type: 'ban', ...row}; passwordConfirmModal.value?.open(`确认封禁 ${row.subdomain}？将删除 DNS 记录但保留数据库数据。`) },
+      }, {
+        trigger: () => h(NButton, {size: 'small', type: 'warning', secondary: true, style: 'margin-right: 4px'}, {default: () => '封禁'}),
+        default: () => `确认封禁 ${row.subdomain}？`,
+      }))
+      btns.push(h(NPopconfirm, {
+        onPositiveClick: () => { pendingAction = {type: 'delete', ...row}; passwordConfirmModal.value?.open(`确认删除 ${row.subdomain}？将删除 DNS 记录和所有数据库数据。`) },
+      }, {
+        trigger: () => h(NButton, {size: 'small', type: 'error', secondary: true}, {default: () => '删除'}),
+        default: () => `确认删除 ${row.subdomain}？此操作不可恢复。`,
+      }))
+    }
+
+    if (row.status === 'orphan' && row.record_id) {
+      // 孤儿租户：可删除 DNS 记录
+      btns.push(h(NPopconfirm, {
+        onPositiveClick: () => { pendingAction = {type: 'delete-dns', ...row}; passwordConfirmModal.value?.open(`确认删除 ${row.subdomain} 的 DNS 记录？`) },
+      }, {
+        trigger: () => h(NButton, {size: 'small', type: 'error', secondary: true}, {default: () => '删除 DNS'}),
+        default: () => `确认删除 ${row.subdomain} 的 DNS 记录？`,
+      }))
+    }
+
+    if (row.status === 'abnormal') {
+      // 异常租户：可清理残留数据
+      btns.push(h(NPopconfirm, {
+        onPositiveClick: () => { pendingAction = {type: 'cleanup', ...row}; passwordConfirmModal.value?.open(`确认清理 ${row.namespace} 的残留数据？`) },
+      }, {
+        trigger: () => h(NButton, {size: 'small', type: 'warning', secondary: true}, {default: () => '清理残留'}),
+        default: () => `确认清理 ${row.namespace} 的数据库残留数据？`,
+      }))
+    }
+
+    return btns.length ? h(NSpace, {size: 4}, {default: () => btns}) : null
   }},
 ]
 
@@ -110,15 +142,29 @@ async function handleCreate() {
 }
 
 async function onPasswordConfirmed() {
-  if (!pendingDeleteId) return
+  if (!pendingAction) return
+  const {type, record_id, namespace} = pendingAction
+  const headers = {Authorization: `Bearer ${getToken()}`}
+
   try {
-    await axios.delete(`${getAPISRV()}/web/tenants/${pendingDeleteId}`, {headers: {Authorization: `Bearer ${getToken()}`}})
-    message.success('租户已删除')
+    if (type === 'delete') {
+      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
+      message.success('租户已删除（DNS + 数据库）')
+    } else if (type === 'ban') {
+      await axios.post(`${getAPISRV()}/web/tenants/${record_id}/ban`, null, {headers})
+      message.success('租户已封禁（仅 DNS）')
+    } else if (type === 'delete-dns') {
+      await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
+      message.success('DNS 记录已删除')
+    } else if (type === 'cleanup') {
+      await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers})
+      message.success('残留数据已清理')
+    }
     fetchTenants()
   } catch (e) {
-    message.error(e?.response?.data?.error || '删除租户失败')
+    message.error(e?.response?.data?.error || '操作失败')
   } finally {
-    pendingDeleteId = null
+    pendingAction = null
   }
 }
 
