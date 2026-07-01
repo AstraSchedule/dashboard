@@ -5,34 +5,30 @@
         {{ currentHint || '此操作需要验证密码才能执行。' }}
       </n-alert>
       <n-form-item label="当前密码">
-        <n-input v-model:value="password" type="password" show-password-on="click" placeholder="请输入密码" @keyup.enter="handleConfirm" />
+        <n-input ref="passwordInput" v-model:value="password" type="password" show-password-on="click" placeholder="请输入密码" @keyup.enter="handleConfirm" />
       </n-form-item>
     </n-space>
   </n-modal>
 </template>
 
 <script setup>
-import {ref} from 'vue'
+import {ref, nextTick} from 'vue'
 import {NModal, NForm, NFormItem, NInput, NSpace, NAlert, useMessage} from 'naive-ui'
 import axios from 'axios'
 import {getAPISRV} from '@/global.js'
 import {getToken} from '@/auth.js'
-
-const props = defineProps({
-  hint: {type: String, default: ''},
-})
-
-const emit = defineEmits(['confirm'])
 
 const message = useMessage()
 const visible = ref(false)
 const loading = ref(false)
 const password = ref('')
 const currentHint = ref('')
+const passwordInput = ref(null)
 
 function open(hint) {
-  currentHint.value = hint || props.hint || ''
+  currentHint.value = hint || ''
   visible.value = true
+  nextTick(() => passwordInput.value?.focus())
 }
 
 function reset() {
@@ -54,11 +50,11 @@ async function handleConfirm() {
     emit('confirm', password.value)
   } catch (e) {
     message.error(e?.response?.data?.detail || '密码错误')
-    return false
-  } finally {
     loading.value = false
+    return false
   }
 }
 
+const emit = defineEmits(['confirm'])
 defineExpose({open})
 </script>
