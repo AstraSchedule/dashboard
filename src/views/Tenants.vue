@@ -22,7 +22,7 @@
       </n-form>
     </n-modal>
 
-    <PasswordConfirmModal ref="passwordConfirmModal" @confirm="onPasswordConfirmed" />
+
   </n-space>
 </template>
 
@@ -32,7 +32,6 @@ import {NSpace, NH1, NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInpu
 import axios from 'axios'
 import {getAPISRV} from '@/global.js'
 import {getToken} from '@/auth.js'
-import PasswordConfirmModal from '@/components/PasswordConfirmModal.vue'
 
 const message = useMessage()
 const tenants = ref([])
@@ -40,7 +39,7 @@ const loading = ref(false)
 const creating = ref(false)
 const showCreateModal = ref(false)
 const createForm = ref({subdomain: ''})
-const passwordConfirmModal = ref(null)
+
 let pendingAction = null
 
 const domain = 'getastra.cn'
@@ -71,25 +70,30 @@ const columns = [
     const btns = []
 
     if (row.status === 'normal' && row.record_id) {
-      btns.push(h(NButton, {size: 'small', type: 'warning', secondary: true, style: 'margin-right: 4px', onClick: () => confirmAction('ban', row, `确认封禁 ${row.subdomain}？将删除 DNS 记录但保留数据库数据。`)}, {default: () => '封禁'}))
-      btns.push(h(NButton, {size: 'small', type: 'error', secondary: true, onClick: () => confirmAction('delete', row, `确认删除 ${row.subdomain}？将删除 DNS 和数据库数据，不可恢复。`)}, {default: () => '删除'}))
+      btns.push(h(NButton, {size: 'small', type: 'warning', secondary: true, style: 'margin-right: 4px', onClick: () => askPassword('ban', row, `确认封禁 ${row.subdomain}？将删除 DNS 记录但保留数据库数据。`)}, {default: () => '封禁'}))
+      btns.push(h(NButton, {size: 'small', type: 'error', secondary: true, onClick: () => askPassword('delete', row, `确认删除 ${row.subdomain}？将删除 DNS 和数据库数据，不可恢复。`)}, {default: () => '删除'}))
     }
 
     if (row.status === 'orphan' && row.record_id) {
-      btns.push(h(NButton, {size: 'small', type: 'error', secondary: true, onClick: () => confirmAction('delete-dns', row, `确认删除 ${row.subdomain} 的 DNS 记录？`)}, {default: () => '删除 DNS'}))
+      btns.push(h(NButton, {size: 'small', type: 'error', secondary: true, onClick: () => askPassword('delete-dns', row, `确认删除 ${row.subdomain} 的 DNS 记录？`)}, {default: () => '删除 DNS'}))
     }
 
     if (row.status === 'abnormal') {
-      btns.push(h(NButton, {size: 'small', type: 'warning', secondary: true, onClick: () => confirmAction('cleanup', row, `确认清理 ${row.namespace} 的残留数据？`)}, {default: () => '清理残留'}))
+      btns.push(h(NButton, {size: 'small', type: 'warning', secondary: true, onClick: () => askPassword('cleanup', row, `确认清理 ${row.namespace} 的残留数据？`)}, {default: () => '清理残留'}))
     }
 
     return btns.length ? h(NSpace, {size: 4}, {default: () => btns}) : null
   }},
 ]
 
-function confirmAction(type, row, hint) {
-  pendingAction = {type, ...row}
-  passwordConfirmModal.value?.open(hint)
+async function askPassword(action, row, hint) {
+  pendingAction = {action, ...row}
+  const pwd = window.prompt(hint + '\n\n请输入密码进行验证：')
+  if (!pwd) {
+    pendingAction = null
+    return
+  }
+  await executeWithPassword(pwd)
 }
 
 async function fetchTenants() {
@@ -115,38 +119,39 @@ async function handleCreateConfirm() {
     return false
   }
   showCreateModal.value = false
-  creating.value = true
-  confirmAction('create', {subdomain}, `确认创建租户 ${subdomain}？将创建 DNS 记录。`)
+  askPassword('create', {subdomain}, `确认创建租户 ${subdomain}？将创建 DNS 记录。`)
   return true
 }
 
-async function onPasswordConfirmed(pwd) {
+async function executeWithPassword(pwd) {
   if (!pendingAction) return
-  const {type, record_id, namespace, subdomain} = pendingAction
-  pendingAction = null
 
+  const {action, record_id, namespace, subdomain} = pendingAction
   const headers = getAuthHeaders(pwd)
+
   try {
-    if (type === 'create') {
+    if (action === 'create') {
       await axios.post(`${getAPISRV()}/web/tenants`, {subdomain}, {headers})
       message.success(`租户 ${subdomain} 创建成功`)
       createForm.value.subdomain = ''
-    } else if (type === 'delete') {
+    } else if (action === 'delete') {
       await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
       message.success('租户已删除（DNS + 数据库）')
-    } else if (type === 'ban') {
+    } else if (action === 'ban') {
       await axios.post(`${getAPISRV()}/web/tenants/${record_id}/ban`, null, {headers})
       message.success('租户已封禁（仅 DNS）')
-    } else if (type === 'delete-dns') {
+    } else if (action === 'delete-dns') {
       await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
       message.success('DNS 记录已删除')
-    } else if (type === 'cleanup') {
+    } else if (action === 'cleanup') {
       await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers})
       message.success('残留数据已清理')
     }
+    pendingAction = null
     fetchTenants()
   } catch (e) {
-    message.error(e?.response?.data?.error || '操作失败')
+    message.error(e?.response?.data?.error || e?.response?.data?.detail || '操作失败')
+    pendingAction = null
   }
 }
 
