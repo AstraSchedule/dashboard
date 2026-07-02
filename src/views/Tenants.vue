@@ -75,6 +75,7 @@ const columns = [
     }
 
     if (row.status === 'orphan' && row.record_id) {
+      btns.push(h(NButton, {size: 'small', type: 'success', secondary: true, style: 'margin-right: 4px', onClick: () => askPassword('complete', row, `确认补全 ${row.subdomain} 的数据库数据？将创建默认管理员账户。`)}, {default: () => '补全'}))
       btns.push(h(NButton, {size: 'small', type: 'error', secondary: true, onClick: () => askPassword('delete-dns', row, `确认删除 ${row.subdomain} 的 DNS 记录？`)}, {default: () => '删除 DNS'}))
     }
 
@@ -143,6 +144,9 @@ async function executeWithPassword(pwd) {
     } else if (action === 'delete-dns') {
       await axios.delete(`${getAPISRV()}/web/tenants/${record_id}`, {headers, data: {namespace}})
       message.success('DNS 记录已删除')
+    } else if (action === 'complete') {
+      await axios.post(`${getAPISRV()}/web/tenants/complete`, {namespace}, {headers})
+      message.success('默认管理员账户已创建')
     } else if (action === 'cleanup') {
       await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers})
       message.success('残留数据已清理')
