@@ -22,6 +22,8 @@
       </n-form>
     </n-modal>
 
+    <PasswordConfirmModal ref="pwdModal" @confirm="onPasswordConfirm" />
+
 
   </n-space>
 </template>
@@ -32,6 +34,7 @@ import {NSpace, NH1, NCard, NDataTable, NButton, NModal, NForm, NFormItem, NInpu
 import axios from 'axios'
 import {getAPISRV} from '@/global.js'
 import {getToken} from '@/auth.js'
+import PasswordConfirmModal from '@/components/PasswordConfirmModal.vue'
 
 const message = useMessage()
 const tenants = ref([])
@@ -39,6 +42,7 @@ const loading = ref(false)
 const creating = ref(false)
 const showCreateModal = ref(false)
 const createForm = ref({subdomain: ''})
+const pwdModal = ref(null)
 
 let pendingAction = null
 
@@ -80,6 +84,7 @@ const columns = [
     }
 
     if (row.status === 'abnormal') {
+      btns.push(h(NButton, {size: 'small', type: 'success', secondary: true, style: 'margin-right: 4px', onClick: () => askPassword('complete-dns', row, `确认为 ${row.namespace} 补全 DNS 记录？`)}, {default: () => '补全 DNS'}))
       btns.push(h(NButton, {size: 'small', type: 'warning', secondary: true, onClick: () => askPassword('cleanup', row, `确认清理 ${row.namespace} 的残留数据？`)}, {default: () => '清理残留'}))
     }
 
@@ -87,14 +92,14 @@ const columns = [
   }},
 ]
 
-async function askPassword(action, row, hint) {
+function askPassword(action, row, hint) {
   pendingAction = {action, ...row}
-  const pwd = window.prompt(hint + '\n\n请输入密码进行验证：')
-  if (!pwd) {
-    pendingAction = null
-    return
-  }
-  await executeWithPassword(pwd)
+  pwdModal.value.open(hint)
+}
+
+function onPasswordConfirm(pwd) {
+  if (!pendingAction) return
+  executeWithPassword(pwd)
 }
 
 async function fetchTenants() {
@@ -147,6 +152,9 @@ async function executeWithPassword(pwd) {
     } else if (action === 'complete') {
       await axios.post(`${getAPISRV()}/web/tenants/complete`, {namespace}, {headers})
       message.success('默认管理员账户已创建')
+    } else if (action === 'complete-dns') {
+      await axios.post(`${getAPISRV()}/web/tenants/complete-dns`, {namespace}, {headers})
+      message.success('DNS 记录已创建')
     } else if (action === 'cleanup') {
       await axios.post(`${getAPISRV()}/web/tenants/cleanup`, {namespace}, {headers})
       message.success('残留数据已清理')
